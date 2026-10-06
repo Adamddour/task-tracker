@@ -41,7 +41,7 @@ public class TaskController {
     }
 
     @PatchMapping("/tasks/{id}/complete")
-    public Task completeTask(@PathVariable("id") Long id) {
+    public synchronized Task completeTask(@PathVariable("id") Long id) {
         for (int i = 0; i < tasks.size(); i++) {
             Task existingTask = tasks.get(i);
 
@@ -62,5 +62,18 @@ public class TaskController {
                 HttpStatus.NOT_FOUND,
                 "Die Aufgabe wurde nicht gefunden."
         );
+    }
+
+    @DeleteMapping("/tasks/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public synchronized void deleteTask(@PathVariable("id") Long id) {
+        boolean removed = tasks.removeIf(task -> task.id().equals(id));
+
+        if (!removed) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Die Aufgabe wurde nicht gefunden."
+            );
+        }
     }
 }
