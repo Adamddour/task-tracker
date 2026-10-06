@@ -39,4 +39,28 @@ public class TaskController {
         tasks.add(task);
         return task;
     }
+
+    @PatchMapping("/tasks/{id}/complete")
+    public Task completeTask(@PathVariable("id") Long id) {
+        for (int i = 0; i < tasks.size(); i++) {
+            Task existingTask = tasks.get(i);
+
+            if (existingTask.id().equals(id)) {
+                Task completedTask = new Task(
+                        existingTask.id(),
+                        existingTask.title(),
+                        existingTask.description(),
+                        true
+                );
+
+                tasks.set(i, completedTask);
+                return completedTask;
+            }
+        }
+
+        throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Die Aufgabe wurde nicht gefunden."
+        );
+    }
 }
