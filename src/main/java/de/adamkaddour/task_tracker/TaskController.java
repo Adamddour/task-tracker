@@ -1,22 +1,26 @@
 package de.adamkaddour.task_tracker;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
+
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class TaskController {
+    private final TaskRepository taskRepository;
 
-    private final List<Task> tasks = new CopyOnWriteArrayList<>();
-    private final AtomicLong nextId = new AtomicLong(1);
+    public TaskController(TaskRepository taskRepository) {
+        this.taskRepository = taskRepository;
+    }
 
     @GetMapping("/tasks")
     public List<Task> getTasks() {
-        return List.copyOf(tasks);
+        return taskRepository.findAll(Sort.by("id")).stream()
+                .map(this::toTask)
+                .toList();
     }
 
     @PostMapping("/tasks")
@@ -24,56 +28,36 @@ public class TaskController {
     public Task createTask(@RequestBody CreateTaskRequest request) {
         if (request.title() == null || request.title().isBlank()) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Der Titel darf nicht leer sein."
-            );
+                    HttpStatus.BAD_REQUEST, "Der Titel darf nicht leer sein.");
         }
-
-        Task task = new Task(
-                nextId.getAndIncrement(),
-                request.title().strip(),
-                request.description(),
-                false
-        );
-
-        tasks.add(task);
-        return task;
+        TaskEntity entity = new TaskEntity(request.title().strip(), request.description());
+        return toTask(taskRepository.save(entity));
     }
 
     @PatchMapping("/tasks/{id}/complete")
-    public synchronized Task completeTask(@PathVariable("id") Long id) {
-        for (int i = 0; i < tasks.size(); i++) {
-            Task existingTask = tasks.get(i);
-
-            if (existingTask.id().equals(id)) {
-                Task completedTask = new Task(
-                        existingTask.id(),
-                        existingTask.title(),
-                        existingTask.description(),
-                        true
-                );
-
-                tasks.set(i, completedTask);
-                return completedTask;
-            }
-        }
-
-        throw new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Die Aufgabe wurde nicht gefunden."
-        );
+    @Transactional
+    public Task completeTask(@PathVariable("id") Long id) {
+        TaskEntity entity = findTask(id);
+        entity.complete();
+        // JPA writes this change when the transaction commits.
+        return toTask(entity);
     }
 
     @DeleteMapping("/tasks/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public synchronized void deleteTask(@PathVariable("id") Long id) {
-        boolean removed = tasks.removeIf(task -> task.id().equals(id));
+    @Transactional
+    public void deleteTask(@PathVariable("id") Long id) {
+        taskRepository.delete(findTask(id));
+    }
 
-        if (!removed) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Die Aufgabe wurde nicht gefunden."
-            );
-        }
+    private TaskEntity findTask(Long id) {
+        return taskRepository.findById(id).orElseThrow(() ->
+                new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Die Aufgabe wurde nicht gefunden."));
+    }
+
+    private Task toTask(TaskEntity entity) {
+        return new Task(entity.getId(), entity.getTitle(),
+                entity.getDescription(), entity.isCompleted());
     }
 }
